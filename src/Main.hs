@@ -3,23 +3,23 @@
 
 module Main where
 
-import qualified Data.Text as T
+import Control.Concurrent
+import Control.Concurrent.STM
+import Control.Exception
+import Control.Monad
 import Data.Aeson
 import Data.Aeson.Types
+import Data.Foldable
+import Data.Functor
+import Data.Int
+import Data.List
+import qualified Data.Text as T
 import qualified Database.SQLite.Simple as Sqlite
 import Database.SQLite.Simple (NamedParam(..))
 import Database.SQLite.Simple.QQ
-import Data.Int
-import qualified Network.HTTP.Client.TLS as TLS
 import qualified Network.HTTP.Client as HTTP
+import qualified Network.HTTP.Client.TLS as TLS
 import Text.Printf
-import Data.Foldable
-import Control.Concurrent
-import Control.Exception
-import Data.Functor
-import Control.Concurrent.STM
-import Data.List
-import Control.Monad
 
 type XkcdNum = Int64
 
@@ -36,7 +36,6 @@ instance FromJSON Xkcd where
     Xkcd <$> v .: "num" <*> v .: "title" <*> v .: "img" <*> v .: "alt" <*>
     v .: "transcript"
   parseJSON invalid = typeMismatch "Xkcd" invalid
-
 
 openXkcdDatabase :: String -> IO Sqlite.Connection
 openXkcdDatabase filePath = do
@@ -62,8 +61,7 @@ queryXkcdByURL manager url = do
     Left errorMessage -> error errorMessage
 
 queryCurrentXkcd :: HTTP.Manager -> IO Xkcd
-queryCurrentXkcd manager =
-  queryXkcdByURL manager "https://xkcd.com/info.0.json"
+queryCurrentXkcd manager = queryXkcdByURL manager "https://xkcd.com/info.0.json"
 
 queryXkcdById :: HTTP.Manager -> XkcdNum -> IO Xkcd
 queryXkcdById manager num =
@@ -92,7 +90,7 @@ instance Sqlite.FromRow Xkcd where
     Xkcd <$> Sqlite.field <*> Sqlite.field <*> Sqlite.field <*> Sqlite.field <*>
     Sqlite.field
 
-searchXkcdsInDbByContext :: Sqlite.Connection -> T.Text -> IO [Xkcd];
+searchXkcdsInDbByContext :: Sqlite.Connection -> T.Text -> IO [Xkcd]
 searchXkcdsInDbByContext dbConn context =
   Sqlite.queryNamed
     dbConn
@@ -134,5 +132,7 @@ main = do
   current <- queryCurrentXkcd manager
   xkcdQueue <- atomically newTQueue
   let xkcdNums = filter (/= 404) [1 .. xkcdNum current]
-  traverse_ (forkIO . downloaderThread manager xkcdQueue) (chunks chunkSize xkcdNums)
+  traverse_
+    (forkIO . downloaderThread manager xkcdQueue)
+    (chunks chunkSize xkcdNums)
   databaseThread dbConn xkcdQueue 0 (genericLength xkcdNums)
