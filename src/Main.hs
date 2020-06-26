@@ -92,8 +92,8 @@ instance Sqlite.FromRow Xkcd where
     Xkcd <$> Sqlite.field <*> Sqlite.field <*> Sqlite.field <*> Sqlite.field <*>
     Sqlite.field
 
-f :: Sqlite.Connection -> T.Text -> IO [Xkcd];
-f dbConn context =
+searchXkcdsInDbByContext :: Sqlite.Connection -> T.Text -> IO [Xkcd];
+searchXkcdsInDbByContext dbConn context =
   Sqlite.queryNamed
     dbConn
     [sql|SELECT num, title, img, alt, transcript
