@@ -121,7 +121,7 @@ databaseThread dbConn xkcdsQueue numCount numCap =
     databaseThread dbConn xkcdsQueue (numCount + genericLength xkcds) numCap
 
 downloaderThread :: HTTP.Manager -> TQueue Xkcd -> [XkcdNum] -> IO ()
-downloaderThread manager xkcdsQueue nums = do
+downloaderThread manager xkcdsQueue nums =
   for_ nums $ \num -> do
     xkcd <- queryXkcdById manager num
     atomically $ writeTQueue xkcdsQueue xkcd
@@ -132,7 +132,7 @@ main = do
   manager <- TLS.newTlsManager
   dbConn <- openXkcdDatabase "database.db"
   current <- queryCurrentXkcd manager
-  xkcdQueue <- atomically $ newTQueue
+  xkcdQueue <- atomically newTQueue
   let xkcdNums = filter (/= 404) [1 .. xkcdNum current]
-  traverse (forkIO . downloaderThread manager xkcdQueue) (chunks chunkSize xkcdNums)
+  traverse_ (forkIO . downloaderThread manager xkcdQueue) (chunks chunkSize xkcdNums)
   databaseThread dbConn xkcdQueue 0 (genericLength xkcdNums)
