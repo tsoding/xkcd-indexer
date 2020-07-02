@@ -51,6 +51,14 @@ openXkcdDatabase filePath = do
            transcript TEXT
          );|]
     []
+  Sqlite.executeNamed
+    dbConn
+    [sql|CREATE TABLE IF NOT EXISTS tf_idf (
+           term TEXT,
+           freq INTEGER,
+           num INTEGER
+         );|]
+    []
   return dbConn
 
 queryXkcdByURL :: HTTP.Manager -> String -> IO Xkcd
@@ -117,6 +125,7 @@ databaseThread dbConn xkcdsQueue numCount numCap =
       for_ (zip [1 ..] xkcds) $ \(i, xkcd) -> do
         printf "Dumping xkcd %d/%d...\n" (numCount + i) numCap
         dumpXkcdToDb xkcd dbConn
+        indexXkcd dbConn xkcd
     databaseThread dbConn xkcdsQueue (numCount + genericLength xkcds) numCap
 
 downloaderThread :: HTTP.Manager -> TQueue Xkcd -> [XkcdNum] -> IO ()
@@ -132,6 +141,30 @@ getLastDumpedXkcd dbConn =
     [sql|select num, title, img, alt, transcript
          from xkcd order by num desc limit 1|]
     []
+
+stopChars :: [Char]
+stopChars = "[]{}:.?!'"
+
+textAsTerms :: T.Text -> [T.Text]
+textAsTerms = map T.toUpper . T.words . T.filter (`notElem` stopChars)
+
+indexXkcd :: Sqlite.Connection -> Xkcd -> IO ()
+indexXkcd dbConn xkcd = do
+  let term = textAsTerms (xkcdTranscript xkcd) <>
+             textAsTerms (xkcdTitle xkcd) <>
+             textAsTerms (xkcdAlt xkcd)
+  traverse_ (\(term, freq) -> do
+      Sqlite.executeNamed
+        dbConn
+        [sql|INSERT INTO tf_idf (term, freq, num)
+             VALUES (:term, :freq, :num);|]
+        [ ":term" := term
+        , ":freq" := freq
+        , ":num" := xkcdNum xkcd
+        ]) $
+    map (\g -> (head g, length g)) $
+    group $
+    sort term
 
 main :: IO ()
 main = do
