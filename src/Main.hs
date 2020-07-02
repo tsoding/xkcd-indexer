@@ -102,11 +102,6 @@ instance Sqlite.FromRow Xkcd where
     Xkcd <$> Sqlite.field <*> Sqlite.field <*> Sqlite.field <*> Sqlite.field <*>
     Sqlite.field
 
-scrapXkcdById :: HTTP.Manager -> Sqlite.Connection -> XkcdNum -> IO ()
-scrapXkcdById manager dbConn num = do
-  xkcd <- queryXkcdById manager num
-  dumpXkcdToDb xkcd dbConn
-
 chunks :: Int -> [a] -> [[a]]
 chunks _ [] = []
 chunks n xs = take n xs : chunks n (drop n xs)
