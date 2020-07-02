@@ -133,7 +133,7 @@ getLastDumpedXkcd dbConn =
          from xkcd order by num desc limit 1|]
     []
 
-stopChars :: [Char]
+stopChars :: String
 stopChars = "[]{}:.?!'"
 
 textAsTerms :: T.Text -> [T.Text]
@@ -144,16 +144,17 @@ indexXkcd dbConn xkcd = do
   let term = textAsTerms (xkcdTranscript xkcd) <>
              textAsTerms (xkcdTitle xkcd) <>
              textAsTerms (xkcdAlt xkcd)
-  traverse_ (\(term, freq) -> do
-      Sqlite.executeNamed
-        dbConn
-        [sql|INSERT INTO tf_idf (term, freq, num)
-             VALUES (:term, :freq, :num);|]
-        [ ":term" := term
-        , ":freq" := freq
-        , ":num" := xkcdNum xkcd
-        ]) $
-    map (\g -> (head g, length g)) $
+  traverse_ (\g ->
+      let term = head g
+          freq = length g
+      in Sqlite.executeNamed
+           dbConn
+           [sql|INSERT INTO tf_idf (term, freq, num)
+                VALUES (:term, :freq, :num);|]
+           [ ":term" := term
+           , ":freq" := freq
+           , ":num" := xkcdNum xkcd
+           ]) $
     group $
     sort term
 
@@ -180,7 +181,7 @@ main = do
   current <- queryCurrentXkcd manager
   lastDumped <- getLastDumpedXkcd dbConn
   xkcdQueue <- atomically newTQueue
-  let xkcdNums = filter (/= 404) [fromMaybe 0 (xkcdNum <$> lastDumped) + 1 .. xkcdNum current]
+  let xkcdNums = filter (/= 404) [maybe 0 xkcdNum lastDumped + 1 .. xkcdNum current]
   traverse_
     (forkIO . downloaderThread manager xkcdQueue)
     (chunks chunkSize xkcdNums)
