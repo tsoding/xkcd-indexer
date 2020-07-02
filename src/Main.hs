@@ -13,6 +13,7 @@ import Data.Foldable
 import Data.Functor
 import Data.Int
 import Data.List
+import Data.Maybe
 import qualified Data.Text as T
 import qualified Database.SQLite.Simple as Sqlite
 import Database.SQLite.Simple (NamedParam(..))
@@ -20,7 +21,6 @@ import Database.SQLite.Simple.QQ
 import qualified Network.HTTP.Client as HTTP
 import qualified Network.HTTP.Client.TLS as TLS
 import Text.Printf
-import Data.Maybe
 
 type XkcdNum = Int64
 
@@ -127,7 +127,8 @@ downloaderThread manager xkcdsQueue nums =
 
 getLastDumpedXkcd :: Sqlite.Connection -> IO (Maybe Xkcd)
 getLastDumpedXkcd dbConn =
-  listToMaybe <$> Sqlite.queryNamed
+  listToMaybe <$>
+  Sqlite.queryNamed
     dbConn
     [sql|select num, title, img, alt, transcript
          from xkcd order by num desc limit 1|]
@@ -141,26 +142,24 @@ textAsTerms = map T.toUpper . T.words . T.filter (`notElem` stopChars)
 
 indexXkcd :: Sqlite.Connection -> Xkcd -> IO ()
 indexXkcd dbConn xkcd = do
-  let term = textAsTerms (xkcdTranscript xkcd) <>
-             textAsTerms (xkcdTitle xkcd) <>
-             textAsTerms (xkcdAlt xkcd)
-  traverse_ (\g ->
-      let term = head g
-          freq = length g
-      in Sqlite.executeNamed
-           dbConn
-           [sql|INSERT INTO tf_idf (term, freq, num)
+  let term =
+        textAsTerms (xkcdTranscript xkcd) <> textAsTerms (xkcdTitle xkcd) <>
+        textAsTerms (xkcdAlt xkcd)
+  traverse_
+    (\g ->
+       let term = head g
+           freq = length g
+        in Sqlite.executeNamed
+             dbConn
+             [sql|INSERT INTO tf_idf (term, freq, num)
                 VALUES (:term, :freq, :num);|]
-           [ ":term" := term
-           , ":freq" := freq
-           , ":num" := xkcdNum xkcd
-           ]) $
-    group $
-    sort term
+             [":term" := term, ":freq" := freq, ":num" := xkcdNum xkcd]) $
+    group $ sort term
 
 searchXkcdInDbByTerm :: Sqlite.Connection -> T.Text -> IO (Maybe Xkcd)
 searchXkcdInDbByTerm dbConn term =
-  listToMaybe <$> Sqlite.queryNamed
+  listToMaybe <$>
+  Sqlite.queryNamed
     dbConn
     [sql|SELECT xkcd.num,
                 xkcd.title,
@@ -171,7 +170,7 @@ searchXkcdInDbByTerm dbConn term =
          INNER JOIN xkcd ON tf_idf.num = xkcd.num
          WHERE tf_idf.term = upper(:term)
          ORDER BY tf_idf.freq DESC;|]
-    [ ":term" := term ]
+    [":term" := term]
 
 main :: IO ()
 main = do
@@ -181,7 +180,8 @@ main = do
   current <- queryCurrentXkcd manager
   lastDumped <- getLastDumpedXkcd dbConn
   xkcdQueue <- atomically newTQueue
-  let xkcdNums = filter (/= 404) [maybe 0 xkcdNum lastDumped + 1 .. xkcdNum current]
+  let xkcdNums =
+        filter (/= 404) [maybe 0 xkcdNum lastDumped + 1 .. xkcdNum current]
   traverse_
     (forkIO . downloaderThread manager xkcdQueue)
     (chunks chunkSize xkcdNums)
