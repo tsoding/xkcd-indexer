@@ -15,12 +15,15 @@ import Data.Int
 import Data.List
 import Data.Maybe
 import qualified Data.Text as T
+import qualified Data.Text.IO as T
 import qualified Database.SQLite.Simple as Sqlite
 import Database.SQLite.Simple (NamedParam(..))
 import Database.SQLite.Simple.QQ
 import qualified Network.HTTP.Client as HTTP
 import qualified Network.HTTP.Client.TLS as TLS
 import Text.Printf
+import System.Environment
+import System.IO
 
 type XkcdNum = Int64
 
@@ -172,17 +175,53 @@ searchXkcdInDbByTerm dbConn term =
          ORDER BY tf_idf.freq DESC;|]
     [":term" := term]
 
+usage :: Handle -> IO ()
+usage handle = do
+  hPutStrLn handle "Usage: xkcd-indexer <command> <args>"
+  hPutStrLn handle "Commands:"
+  hPutStrLn handle "  help                                Show this help text"
+  hPutStrLn handle "  download <database-file-path>       Downloads and indexes xkcd \n\
+                   \                                      metadata into an SQLite Databse file."
+  hPutStrLn handle "  search <database-file-path> <term>  Search xkcd by term in the SQLite \n\
+                   \                                      database file"
+
 main :: IO ()
 main = do
-  let chunkSize = 100
-  manager <- TLS.newTlsManager
-  dbConn <- openXkcdDatabase "database.db"
-  current <- queryCurrentXkcd manager
-  lastDumped <- getLastDumpedXkcd dbConn
-  xkcdQueue <- atomically newTQueue
-  let xkcdNums =
-        filter (/= 404) [maybe 0 xkcdNum lastDumped + 1 .. xkcdNum current]
-  traverse_
-    (forkIO . downloaderThread manager xkcdQueue)
-    (chunks chunkSize xkcdNums)
-  databaseThread dbConn xkcdQueue 0 (genericLength xkcdNums)
+  args <- getArgs
+  case args of
+    "download":subArgs -> do
+      case subArgs of
+        dbFilePath:_ -> do
+          let chunkSize = 100
+          manager <- TLS.newTlsManager
+          dbConn <- openXkcdDatabase dbFilePath
+          current <- queryCurrentXkcd manager
+          lastDumped <- getLastDumpedXkcd dbConn
+          xkcdQueue <- atomically newTQueue
+          let xkcdNums =
+                filter (/= 404) [maybe 0 xkcdNum lastDumped + 1 .. xkcdNum current]
+          traverse_
+            (forkIO . downloaderThread manager xkcdQueue)
+            (chunks chunkSize xkcdNums)
+          databaseThread dbConn xkcdQueue 0 (genericLength xkcdNums)
+        _ -> do
+          hPutStrLn stderr "Not enough arguments provided for `download` subcommand"
+          usage stderr
+    "search":subArgs -> do
+      case subArgs of
+        dbFilePath:term:_ -> do
+          dbConn <- openXkcdDatabase dbFilePath
+          probablyXkcd <- searchXkcdInDbByTerm dbConn (T.pack term)
+          case probablyXkcd of
+            Just xkcd -> T.putStrLn $ xkcdImg xkcd
+            Nothing -> T.putStrLn "Could not find anything"
+        _ -> do
+          hPutStrLn stderr "Not enough arguments provided for `search` subcommand"
+          usage stderr
+    "help":_ -> usage stdout
+    unknownCommand:_ -> do
+      hPrintf stderr "[ERROR] Unknown command `%s`\n" unknownCommand
+      usage stderr
+    [] -> do
+      hPrintf stderr "No command was provided\n"
+      usage stderr
