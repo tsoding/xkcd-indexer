@@ -99,15 +99,6 @@ instance Sqlite.FromRow Xkcd where
     Xkcd <$> Sqlite.field <*> Sqlite.field <*> Sqlite.field <*> Sqlite.field <*>
     Sqlite.field
 
-searchXkcdsInDbByContext :: Sqlite.Connection -> T.Text -> IO [Xkcd]
-searchXkcdsInDbByContext dbConn context =
-  Sqlite.queryNamed
-    dbConn
-    [sql|SELECT num, title, img, alt, transcript
-         FROM xkcd
-         WHERE transcript like '%' || :context || '%'|]
-    [":context" := context]
-
 scrapXkcdById :: HTTP.Manager -> Sqlite.Connection -> XkcdNum -> IO ()
 scrapXkcdById manager dbConn num = do
   xkcd <- queryXkcdById manager num
@@ -165,6 +156,21 @@ indexXkcd dbConn xkcd = do
     map (\g -> (head g, length g)) $
     group $
     sort term
+
+searchXkcdInDbByTerm :: Sqlite.Connection -> T.Text -> IO (Maybe Xkcd)
+searchXkcdInDbByTerm dbConn term =
+  listToMaybe <$> Sqlite.queryNamed
+    dbConn
+    [sql|SELECT xkcd.num,
+                xkcd.title,
+                xkcd.img,
+                xkcd.alt,
+                xkcd.transcript
+         FROM tf_idf
+         INNER JOIN xkcd ON tf_idf.num = xkcd.num
+         WHERE tf_idf.term = upper(:term)
+         ORDER BY tf_idf.freq DESC;|]
+    [ ":term" := term ]
 
 main :: IO ()
 main = do
