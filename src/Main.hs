@@ -56,7 +56,7 @@ openXkcdDatabase filePath = do
     []
   Sqlite.executeNamed
     dbConn
-    [sql|CREATE TABLE IF NOT EXISTS tf_idf (
+    [sql|CREATE TABLE IF NOT EXISTS xkcd_tf_idf (
            term TEXT,
            freq INTEGER,
            num INTEGER
@@ -154,7 +154,7 @@ indexXkcd dbConn xkcd = do
            freq = length g
         in Sqlite.executeNamed
              dbConn
-             [sql|INSERT INTO tf_idf (term, freq, num)
+             [sql|INSERT INTO xkcd_tf_idf (term, freq, num)
                 VALUES (:term, :freq, :num);|]
              [":term" := term, ":freq" := freq, ":num" := xkcdNum xkcd]) $
     group $ sort term
@@ -169,10 +169,10 @@ searchXkcdInDbByTerm dbConn term =
                 xkcd.img,
                 xkcd.alt,
                 xkcd.transcript
-         FROM tf_idf
-         INNER JOIN xkcd ON tf_idf.num = xkcd.num
-         WHERE tf_idf.term = upper(:term)
-         ORDER BY tf_idf.freq DESC;|]
+         FROM xkcd_tf_idf
+         INNER JOIN xkcd ON xkcd_tf_idf.num = xkcd.num
+         WHERE xkcd_tf_idf.term = upper(:term)
+         ORDER BY xkcd_tf_idf.freq DESC;|]
     [":term" := term]
 
 usage :: Handle -> IO ()
