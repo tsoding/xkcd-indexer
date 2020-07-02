@@ -20,6 +20,7 @@ import Database.SQLite.Simple.QQ
 import qualified Network.HTTP.Client as HTTP
 import qualified Network.HTTP.Client.TLS as TLS
 import Text.Printf
+import Data.Maybe
 
 type XkcdNum = Int64
 
@@ -124,14 +125,23 @@ downloaderThread manager xkcdsQueue nums =
     xkcd <- queryXkcdById manager num
     atomically $ writeTQueue xkcdsQueue xkcd
 
+getLastDumpedXkcd :: Sqlite.Connection -> IO (Maybe Xkcd)
+getLastDumpedXkcd dbConn =
+  listToMaybe <$> Sqlite.queryNamed
+    dbConn
+    [sql|select num, title, img, alt, transcript
+         from xkcd order by num desc limit 1|]
+    []
+
 main :: IO ()
 main = do
   let chunkSize = 100
   manager <- TLS.newTlsManager
   dbConn <- openXkcdDatabase "database.db"
   current <- queryCurrentXkcd manager
+  lastDumped <- getLastDumpedXkcd dbConn
   xkcdQueue <- atomically newTQueue
-  let xkcdNums = filter (/= 404) [1 .. xkcdNum current]
+  let xkcdNums = filter (/= 404) [fromMaybe 0 (xkcdNum <$> lastDumped) + 1 .. xkcdNum current]
   traverse_
     (forkIO . downloaderThread manager xkcdQueue)
     (chunks chunkSize xkcdNums)
