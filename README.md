@@ -7,6 +7,6 @@ This is a research project for [tsoding/kgbotka#233](https://github.com/tsoding/
 ## Usage
 
 ```console
-$ cabal v2-run download database.db
-$ cabal v2-run search database.db compiling
+$ cabal v2-run exe:xkcd-indexer download database.db
+$ cabal v2-run exe:xkcd-indexer search database.db compiling
 ```
