@@ -206,7 +206,6 @@ main = do
           let chunkSize = 100
           manager <- TLS.newTlsManager
           dbConn <- openXkcdDatabase dbFilePath
-          Sqlite.setTrace dbConn (Just T.putStrLn)
           current <- queryCurrentXkcd manager
           lastDumped <- getLastDumpedXkcd dbConn
           xkcdQueue <- atomically newTQueue
@@ -223,7 +222,6 @@ main = do
       case subArgs of
         dbFilePath:terms -> do
           dbConn <- openXkcdDatabase dbFilePath
-          Sqlite.setTrace dbConn (Just T.putStrLn)
           probablyXkcd <- searchXkcdInDbByTerm dbConn $ map T.pack terms
           case probablyXkcd of
             Just xkcd -> print $ xkcd
